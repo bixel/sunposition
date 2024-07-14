@@ -50,7 +50,13 @@ def calculate_data(
     return ineichen
 
 
-@st.cache_data(hash_funcs={"areas": lambda areas: [f"{a['azimuth']}{a['elevation']}{a['size']}" for a in areas]})
+@st.cache_data(
+    hash_funcs={
+        "areas": lambda areas: [
+            f"{a['azimuth']}{a['elevation']}{a['size']}" for a in areas
+        ]
+    }
+)
 def join_areas(_base_data: pd.DataFrame, areas: list[dict]) -> pd.DataFrame:
     # areas = st.session_state.get("areas", [])
     for i, area in enumerate(areas):
@@ -72,13 +78,33 @@ def join_areas(_base_data: pd.DataFrame, areas: list[dict]) -> pd.DataFrame:
 
 
 def integrate_joined_data(joined_data: pd.DataFrame) -> pd.DataFrame | None:
-    if "irradiation_sum" in joined_data.columns:
-        dx = joined_data.index[:2].diff()[-1]
-        assert type(dx) == pd.Timedelta
-        integrated_data = joined_data.groupby(pd.Grouper(freq="D"))[
-            "irradiation_sum"
-        ].apply(lambda g: integrate.trapezoid(g, dx=dx.seconds))
-        return integrated_data.iloc[:-1] / 3600 / 1000
+    irradiation_cols = [
+        f"area_{i}_irradiation" for i in range(len(st.session_state.get("areas", [])))
+    ]
+    all_cols = []
+    grouper = pd.Grouper(freq="D")
+    dx = joined_data.index[:2].diff()[-1]
+    assert type(dx) == pd.Timedelta
+    data = {}
+    for i, col in enumerate(irradiation_cols):
+        cname = f"area_{i}_integrated"
+        data[cname] = joined_data.groupby(grouper)[col].apply(
+            lambda g: integrate.trapezoid(g, dx=dx.seconds)
+        )
+        all_cols.append(cname)
+
+    pdf = pd.DataFrame(data)
+
+    if len(irradiation_cols) > 1:
+        pdf["integrated_sum"] = pdf.sum(axis=1)
+        all_cols.append("integrated_sum")
+
+    return pdf[all_cols].iloc[:-1] / 3_600_000
+    # if "irradiation_sum" in joined_data.columns:
+    #     integrated_data = joined_data.groupby(grouper)[
+    #         "irradiation_sum"
+    #     ].apply(lambda g: integrate.trapezoid(g, dx=dx.seconds))
+    #     return integrated_data.iloc[:-1] / 3600 / 1000
 
 
 def daily_data(data: pd.DataFrame, plot_date: date):
@@ -179,6 +205,8 @@ ineichen_plot_data = daily_data(data, plot_date=plot_date)
 joined_area_data = join_areas(data, st.session_state.get("areas", []))
 area_plot_data = daily_data(joined_area_data, plot_date=plot_date)
 integrated_plot_data = integrate_joined_data(joined_area_data)
+
+st.dataframe(integrated_plot_data)
 
 sun_vec = get_solar_vector(plot_date, time_of_day, long, lat)
 
