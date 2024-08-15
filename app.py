@@ -196,7 +196,7 @@ with time_columns[3]:
         key="time_of_day",
     )
 with time_columns[4]:
-    freq = st.text_input(label="freq", value="1min")
+    freq = st.selectbox(label="freq", options=["10min", "30min", "1h"], index=1)
 
 
 pressure = calculate_pressure(altitude)
