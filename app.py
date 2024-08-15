@@ -206,7 +206,8 @@ joined_area_data = join_areas(data, st.session_state.get("areas", []))
 area_plot_data = daily_data(joined_area_data, plot_date=plot_date)
 integrated_plot_data = integrate_joined_data(joined_area_data)
 
-st.dataframe(integrated_plot_data)
+if st.session_state.get("debug"):
+    st.dataframe(integrated_plot_data)
 
 sun_vec = get_solar_vector(plot_date, time_of_day, long, lat)
 
@@ -231,15 +232,39 @@ st.markdown(
 st.header(f"Ineichen Irradiation on {plot_date:%Y-%m-%d}")
 st.line_chart(ineichen_plot_data, y=["dhi", "dni", "ghi"])
 
-st.header("Daily Area Irradiation")
 if num_areas := len(st.session_state.get("areas", [])):
     area_factor_cols = [f"area_{i}_direction_factor" for i in range(num_areas)]
-    area_irrad_cols = [f"area_{i}_irradiation" for i in range(num_areas)]
+    area_irrad_cols = {
+        f"area_{i}_irradiation": st.session_state.areas[i].get(
+            "label", f"area_{i}_irradiation"
+        )
+        for i in range(num_areas)
+    }
+    area_integrated_cols = {
+        f"area_{i}_integrated": st.session_state.areas[i].get(
+            "label", f"area_{i}_integrated"
+        )
+        for i in range(num_areas)
+    }
     if len(area_irrad_cols) > 1:
-        area_irrad_cols += ["irradiation_sum"]
-    # st.line_chart(area_plot_data, y=area_factor_cols, y_label="Factor")
-    st.line_chart(area_plot_data, y=area_irrad_cols, y_label="Irradiation / Watt")
-    st.line_chart(integrated_plot_data, y_label="Energy / kWh")
+        area_irrad_cols["irradiation_sum"] = "Sum"
+        area_integrated_cols["integrated_sum"] = "Sum"
+    st.header("Daily Area Irradiation")
+    st.line_chart(
+        area_plot_data.rename(columns=area_irrad_cols),
+        y=list(area_irrad_cols.values()),
+        y_label="Irradiation / Watt",
+    )
+    st.header("Daily Energy Potential")
+    st.line_chart(
+        integrated_plot_data.rename(columns=area_integrated_cols),
+        y_label="Energy / kWh",
+    )
+
+    st.line_chart(
+        integrated_plot_data.rename(columns=area_integrated_cols).cumsum(),
+        y_label="Energy / kWh",
+    )
 else:
     st.text("Define areas to evaluate irradiation over time.")
 
@@ -291,7 +316,10 @@ for i, area in enumerate(st.session_state.areas):
 
         area_direction = direction_vec(elevation, azimuth)
         factor = irradiation_factor(sun_vec, area_direction)
-        st.text(f"Area vector {area_direction=}")
-        st.text(f"Irradiation {factor=}")
+        if st.session_state.get("debug"):
+            st.text(f"Area vector {area_direction=}")
+            st.text(f"Irradiation {factor=}")
 
         st.form_submit_button("Save", on_click=sync_i, args=(i,))
+
+st.toggle(label="Debug mode", key="debug")
